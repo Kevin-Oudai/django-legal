@@ -96,16 +96,5 @@ Once the first stable version is ready, this README will be updated with:
 - Configuration guides
 - Template override examples
 
----
 
-## Future Documentation
-
-As the project matures, the repository may gain:
-
-- A short **vision statement** for long-term goals
-- A **ROADMAP.md** for future features (including potential blockchain integrations)
-- A **CONTRIBUTING.md** for early contributors
-- A **LICENSE** file (MIT, BSD, etc.) once a license is chosen
-
-For now, this README is intentionally minimal and forward-looking, reflecting the early-stage status of the project.
 
