@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Home</title>
+  </head>
+  <body>
+    <h1>Home</h1>
+
+    {% if user.is_authenticated %}
+      <p>You are logged in as {{ user.username }}.</p>
+      <p>
+        This page is protected by login and the django_legal compliance
+        decorator.
+      </p>
+      <ul>
+        <li><a href="{% url 'legal_ok' %}">View page that requires legal compliance</a></li>
+        <li><a href="{% url 'legal_status' %}">View your current legal status</a></li>
+      </ul>
+      <p><a href="{% url 'logout' %}">Log out</a></p>
+    {% else %}
+      <p>You are not logged in.</p>
+      <p><a href="{% url 'login' %}?next={{ request.path }}">Log in</a></p>
+    {% endif %}
+  </body>
+</html>

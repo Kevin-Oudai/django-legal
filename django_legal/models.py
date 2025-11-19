@@ -18,6 +18,12 @@ class LegalDocument(models.Model):
         return self.sections.all().order_by("order", "id")
 
     def build_current_snapshot(self) -> str:
+        """
+        Build the current snapshot text for this document from its sections.
+
+        Sections are read from the database (ordered by "order" and "id"),
+        so this always reflects the latest saved content.
+        """
         lines: list[str] = []
         for section in self.get_ordered_sections():
             heading = (section.heading or "").strip()
@@ -61,6 +67,15 @@ class LegalDocument(models.Model):
         return f"{major}.{minor}.{patch}"
 
     def publish_new_version(self):
+        """
+        Publish a new immutable version for this document.
+
+        - Rebuilds the snapshot text from the latest sections.
+        - Computes a diff against the last version's snapshot to choose
+          the next X.Y.Z version label.
+        - Computes and stores a hash over identifying data + snapshot.
+        """
+        # Build snapshot from currently saved sections.
         snapshot = self.build_current_snapshot()
         last_version = self.versions.order_by("-created_at").first()
 
@@ -72,6 +87,7 @@ class LegalDocument(models.Model):
         else:
             diff_percent = 100.0
 
+        # Determine the next semantic version number based on the diff.
         version_label = self._next_version_label(last_version, diff_percent)
         timestamp = timezone.now()
 

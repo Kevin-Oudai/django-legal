@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Legal status</title>
+  </head>
+  <body>
+    <h1>Legal status</h1>
+
+    {% if is_compliant %}
+      <p>You are currently compliant with all required legal documents.</p>
+    {% else %}
+      <p>You are <strong>not</strong> compliant with all required legal documents.</p>
+      {% if missing_versions %}
+        <p>You still need to accept the following current versions:</p>
+        <ul>
+          {% for version in missing_versions %}
+            <li>
+              {{ version.document.human_name }} (version {{ version.version_label }})
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <p>
+        Go to the <a href="{% url 'django_legal:accept' %}?next=/legal/status/">legal acceptance page</a>
+        to accept the current versions.
+      </p>
+    {% endif %}
+
+    <p><a href="/">Back to home</a></p>
+    <p><a href="{% url 'logout' %}">Log out</a></p>
+  </body>
+</html>
+
