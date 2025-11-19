@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Legal Documents Acceptance</title>
+  </head>
+  <body>
+    <h1>Legal Documents Acceptance</h1>
+
+    {% if missing_versions %}
+      <p>You must accept the following current legal documents to continue:</p>
+      <ul>
+        {% for version in missing_versions %}
+          <li>
+            <strong>{{ version.document.human_name }}</strong>
+            (version {{ version.version_label }})
+            -
+            <a href="{% url 'django_legal:current_version' version.document.slug %}" target="_blank">
+              View current version
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit">I accept all of the above current legal documents</button>
+      </form>
+    {% else %}
+      <p>There are no legal documents requiring acceptance at this time.</p>
+      <p><a href="{{ next|default:'/' }}">Continue</a></p>
+    {% endif %}
+  </body>
+</html>
+

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>
+      {% if document %}{{ document.human_name }}{% else %}Legal Document{% endif %}
+    </title>
+  </head>
+  <body>
+    {% if version %}
+      <h1>{{ document.human_name }}</h1>
+      <p><em>Version {{ version.version_label }}</em></p>
+      <pre style="white-space: pre-wrap;">{{ version.content_snapshot }}</pre>
+    {% else %}
+      <h1>{{ document.human_name }}</h1>
+      <p>No published version is available for this document.</p>
+    {% endif %}
+  </body>
+</html>
+
