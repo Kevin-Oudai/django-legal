@@ -19,9 +19,16 @@ class LegalDocumentAdmin(admin.ModelAdmin):
     actions = ("publish_new_version",)
 
     def publish_new_version(self, request, queryset):
+        created = 0
         for document in queryset:
-            document.publish_new_version()
-        self.message_user(request, f"Published new version for {queryset.count()} document(s).")
+            _version, was_created = document.publish_new_version()
+            if was_created:
+                created += 1
+
+        if created:
+            self.message_user(request, f"Published new version for {created} document(s).")
+        else:
+            self.message_user(request, "No new versions published (snapshots unchanged).")
 
     publish_new_version.short_description = "Publish new legal version from current sections"
 
@@ -49,10 +56,10 @@ class LegalDocumentAdmin(admin.ModelAdmin):
 
         if last_version is None:
             # No versions yet: publish the initial 1.0.0 snapshot.
-            document.publish_new_version()
+            _version, _ = document.publish_new_version()
         elif current_snapshot != last_version.content_snapshot:
             # Sections have changed since the last version; publish a new one.
-            document.publish_new_version()
+            _version, _ = document.publish_new_version()
 
 
 @admin.register(LegalDocumentVersion)

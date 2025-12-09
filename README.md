@@ -1,4 +1,4 @@
- # django-legal
+# django-legal
 
 **django-legal** is a lightweight Django app for managing legal documents (Terms of Use, Privacy Policy, etc.) and tracking which versions each user has agreed to.
 
@@ -21,14 +21,14 @@ Many sites need users to agree to one or more legal documents, and to re-accept 
   - Require re-acceptance for new versions.
 - **View protection**
   - A `@legal_required` decorator that checks whether the user has accepted the latest versions of all required documents.
-  - If not compliant, redirect the user to a central “acceptance gate” page or any custom page designated by the user.
+  - If not compliant, redirect the user to a central "acceptance gate" page or any custom page designated by the user.
 - **Minimal templates**
   - Ships with simple example templates for the acceptance flow and current-version display.
   - You are encouraged to override these in your own project.
 
 At a high level, the app answers one question:
 
-> “Does the current authenticated user accept the conditions of all required legal documents?”
+> "Does the current authenticated user accept the conditions of all required legal documents?"
 
 ---
 
@@ -67,7 +67,7 @@ MIDDLEWARE = [
 ]
 ```
 
-Include the app's URLs (for the acceptance gate and the “current version” view):
+Include the app's URLs (for the acceptance gate and the current version view):
 
 ```python
 # urls.py
@@ -108,7 +108,7 @@ The app uses your configured `AUTH_USER_MODEL` internally, via `settings.AUTH_US
 ### 1. Create documents in the admin
 
 1. Log into Django admin.
-2. Create one or more **LegalDocument** entries (e.g. “Terms of Use”, “Privacy Policy”).
+2. Create one or more **LegalDocument** entries (e.g. "Terms of Use", "Privacy Policy").
    - Set `is_required=True` for documents that users must accept so they can access and use the site.
 3. Add **sections** for each document using `LegalDocumentSection` to build up the full text in order.
 4. Publish a new version for each document. This takes a snapshot of the current sections, computes a hash, and assigns an `X.Y.Z` version label.
@@ -143,7 +143,7 @@ Behaviour:
 
 `django-legal` ships with a central gate view at `django_legal.views.acceptance_gate`, exposed by the URL pattern:
 
-- `path("accept/", acceptance_gate, name="accept")` (included via `include("django_legal.urls")`).
+- `path("accept/", acceptance_gate, name="accept")` (included via `include("django_legal.urls"))`.
 
 Behaviour:
 
@@ -176,6 +176,13 @@ You can link to this from your own templates, for example:
 ```
 
 As with the gate template, you can override `current_version.html` under `templates/django_legal/` in your project.
+
+---
+
+## Version publishing
+
+- Calling `LegalDocument.publish_new_version()` returns `(version, created)`. When the current snapshot matches the latest version, it returns the existing version with `created=False`.
+- Publishing is idempotent and uses a stable hash (slug + version + snapshot) to avoid churn; admin actions already handle this return shape.
 
 ---
 
@@ -235,4 +242,3 @@ and then decorate any protected views with `@login_required` and `@legal_require
 ## Project status
 
 This is an early version of **django-legal**. The core behaviour is in place, but the API and templates may still evolve. Feedback and contributions are welcome.
-

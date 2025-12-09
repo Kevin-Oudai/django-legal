@@ -2,7 +2,7 @@ import difflib
 import hashlib
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 
@@ -73,38 +73,50 @@ class LegalDocument(models.Model):
         - Rebuilds the snapshot text from the latest sections.
         - Computes a diff against the last version's snapshot to choose
           the next X.Y.Z version label.
-        - Computes and stores a hash over identifying data + snapshot.
+        - Computes and stores a stable hash over identifying data + snapshot.
+
+        Returns a tuple of (version, created) where `created` is False
+        if the latest version already matches the current snapshot.
         """
-        # Build snapshot from currently saved sections.
-        snapshot = self.build_current_snapshot()
-        last_version = self.versions.order_by("-created_at").first()
+        with transaction.atomic():
+            locked = LegalDocument.objects.select_for_update().get(pk=self.pk)
 
-        if last_version is not None:
-            diff_percent = self._compute_diff_percent(
-                last_version.content_snapshot,
-                snapshot,
+            # Build snapshot from currently saved sections.
+            snapshot = locked.build_current_snapshot()
+            last_version = locked.versions.order_by("-created_at").first()
+
+            # If nothing changed since the last version, avoid creating a
+            # duplicate immutable record. This also keeps the version hash
+            # stable across repeated publish attempts.
+            if last_version is not None and snapshot == last_version.content_snapshot:
+                return last_version, False
+
+            if last_version is not None:
+                diff_percent = self._compute_diff_percent(
+                    last_version.content_snapshot,
+                    snapshot,
+                )
+            else:
+                diff_percent = 100.0
+
+            # Determine the next semantic version number based on the diff.
+            version_label = self._next_version_label(last_version, diff_percent)
+
+            hash_input = (
+                f"{locked.pk}:{locked.slug}:{version_label}:{snapshot}"
+            ).encode("utf-8")
+            version_hash = hashlib.sha256(hash_input).hexdigest()
+            timestamp = timezone.now()
+
+            version = LegalDocumentVersion.objects.create(
+                document=locked,
+                version_label=version_label,
+                content_snapshot=snapshot,
+                created_at=timestamp,
+                published_at=timestamp,
+                version_hash=version_hash,
             )
-        else:
-            diff_percent = 100.0
-
-        # Determine the next semantic version number based on the diff.
-        version_label = self._next_version_label(last_version, diff_percent)
-        timestamp = timezone.now()
-
-        hash_input = (
-            f"{self.pk}:{self.slug}:{version_label}:{snapshot}:{timestamp.isoformat()}"
-        ).encode("utf-8")
-        version_hash = hashlib.sha256(hash_input).hexdigest()
-
-        version = LegalDocumentVersion.objects.create(
-            document=self,
-            version_label=version_label,
-            content_snapshot=snapshot,
-            created_at=timestamp,
-            published_at=timestamp,
-            version_hash=version_hash,
-        )
-        return version
+            return version, True
 
 
 class LegalDocumentSection(models.Model):
@@ -181,6 +193,14 @@ class LegalDocumentAcceptance(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user} accepted {self.version} at {self.accepted_at}"
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "version"),
+                name="unique_user_version_acceptance",
+            )
+        ]
 
 
 def check_user_legal_compliance(user):
