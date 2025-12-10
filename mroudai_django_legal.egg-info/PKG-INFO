@@ -1,3 +1,31 @@
+Metadata-Version: 2.4
+Name: mroudai-django-legal
+Version: 0.1.1
+Summary: Lightweight Django app to manage legal documents and user acceptance.
+Author: Kevin Oudai
+License: MIT
+Project-URL: Homepage, https://github.com/Kevin-Oudai/django-legal
+Project-URL: Source, https://github.com/Kevin-Oudai/django-legal
+Project-URL: Tracker, https://github.com/Kevin-Oudai/django-legal/issues
+Keywords: django,legal,terms,privacy,gdpr
+Classifier: Development Status :: 3 - Alpha
+Classifier: Framework :: Django
+Classifier: Framework :: Django :: 5.0
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: Django<6.0,>=5.0
+Dynamic: license-file
+
 # django-legal
 
 **django-legal** is a lightweight Django app for managing legal documents (Terms of Use, Privacy Policy, etc.) and tracking which versions each user has agreed to.
