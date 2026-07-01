@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>{{ document.human_name }}</title>
+  </head>
+  <body>
+    <h1>Custom template for {{ document.human_name }}</h1>
+    {% if version %}
+      <p>Version {{ version.version_label }}</p>
+    {% endif %}
+  </body>
+</html>

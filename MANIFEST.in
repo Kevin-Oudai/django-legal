@@ -1,0 +1,5 @@
+recursive-include django_legal/templates *
+recursive-include django_legal/migrations *.py
+include LICENSE
+include README.md
+global-exclude *.py[cod] __pycache__ *.sqlite3

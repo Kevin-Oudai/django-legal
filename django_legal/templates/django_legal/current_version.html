@@ -10,11 +10,56 @@
     {% if version %}
       <h1>{{ document.human_name }}</h1>
       <p><em>Version {{ version.version_label }}</em></p>
-      <pre style="white-space: pre-wrap;">{{ version.content_snapshot }}</pre>
+      {% if version_update_diff %}
+        <section>
+          <h2>Document updates</h2>
+          {% if version_update_diff.has_previous %}
+            <p>Changes since version {{ version_update_diff.previous_version.version_label }} are highlighted below.</p>
+          {% else %}
+            <p>This is the first published version of this document.</p>
+          {% endif %}
+          <div>
+            {% for block in version_update_diff.blocks %}
+              <div class="legal-diff-block legal-diff-block--{{ block.kind }}">
+                {% if block.is_changed %}
+                  <strong>{{ block.label }}</strong>
+                {% endif %}
+                {% for line in block.lines %}
+                  {% if line %}
+                    <p>{{ line }}</p>
+                  {% else %}
+                    <br>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+      {% else %}
+        <pre style="white-space: pre-wrap;">{{ version.content_snapshot }}</pre>
+      {% endif %}
+
+      {% if requires_acceptance %}
+        <section>
+          <h2>Your decision</h2>
+          <p>
+            Accept this document to continue.
+            {% if remaining_legal_document_count > 1 %}
+              {{ remaining_legal_document_count }} documents still need your agreement, including this one.
+            {% else %}
+              This is the last document that needs your agreement.
+            {% endif %}
+          </p>
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" name="legal_action" value="accept">I accept these changes</button>
+            <button type="submit" name="legal_action" value="decline">Decline</button>
+          </form>
+        </section>
+      {% endif %}
     {% else %}
       <h1>{{ document.human_name }}</h1>
       <p>No published version is available for this document.</p>
     {% endif %}
   </body>
 </html>
-
