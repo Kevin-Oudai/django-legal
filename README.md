@@ -1,6 +1,7 @@
 # django-legal
 
 **django-legal** is a lightweight Django app for managing legal documents (Terms of Use, Privacy Policy, etc.) and tracking which versions each user has agreed to.
+This repository includes both the reusable app (`django_legal/`) and a small demo project (`test_project/`) you can run locally to see the flow end-to-end.
 
 ---
 
@@ -25,6 +26,9 @@ Many sites need users to agree to one or more legal documents, and to re-accept 
 - **Minimal templates**
   - Ships with simple example templates for the acceptance flow and current-version display.
   - You are encouraged to override these in your own project.
+  - Individual legal document pages can also be replaced with document-specific templates.
+- **Demo project included**
+  - A minimal Django project with sample views and templates to exercise login + acceptance flows.
 
 At a high level, the app answers one question:
 
@@ -37,7 +41,13 @@ At a high level, the app answers one question:
 Install from PyPI or from your chosen source:
 
 ```bash
-pip install django-legal
+pip install mroudai-django-legal
+```
+
+Install directly from GitHub:
+
+```bash
+pip install "mroudai-django-legal @ git+https://github.com/Kevin-Oudai/django-legal.git@v0.1.3"
 ```
 
 Ensure all the listed apps are in the INSTALLED_APPS list:
@@ -111,9 +121,13 @@ The app uses your configured `AUTH_USER_MODEL` internally, via `settings.AUTH_US
 2. Create one or more **LegalDocument** entries (e.g. "Terms of Use", "Privacy Policy").
    - Set `is_required=True` for documents that users must accept so they can access and use the site.
 3. Add **sections** for each document using `LegalDocumentSection` to build up the full text in order.
-4. Publish a new version for each document. This takes a snapshot of the current sections, computes a hash, and assigns an `X.Y.Z` version label.
+4. Save the document. If sections exist, the admin will automatically publish an initial `1.0.0` version.
+5. When you update sections later, either save again (auto-publish on changes) or use the admin action
+   **"Publish new legal version from current sections"**. Each publish takes a snapshot of the current sections,
+   computes a hash, and assigns an `X.Y.Z` version label.
 
 Once a document has at least one published version, the app can start enforcing acceptance.
+Required documents with *no* published version are ignored until you publish one.
 
 ### 2. Protect views with `@legal_required`
 
@@ -147,10 +161,12 @@ Behaviour:
 
 Behaviour:
 
-- **GET**: shows all required legal documents for which the current user has not accepted the latest version. It uses the template `django_legal/acceptance_gate.html` by default.
-- **POST**: records acceptance for all missing current versions for `request.user`, then redirects to:
-  - The `next` parameter from the request (if present), or
-  - `"/"` as a fallback.
+- **GET**: shows required legal documents for which the current user has not accepted the latest version. It uses the template `django_legal/acceptance_gate.html` by default.
+- **POST**: redirects to the first missing legal document page. The gate does not bulk-accept documents.
+- Acceptance happens from the individual legal document page. Users accept or decline one document at a time.
+- After accepting one document, the user is moved to the next missing required document. When no required documents remain, the user is redirected to `"/"`.
+- Declining a document redirects to `"/"` without recording acceptance for that version.
+- The gate view itself is protected with `@login_required`, so unauthenticated users are redirected to your login URL.
 
 You can override the gate template by creating your own file at:
 
@@ -176,6 +192,87 @@ You can link to this from your own templates, for example:
 ```
 
 As with the gate template, you can override `current_version.html` under `templates/django_legal/` in your project.
+For a per-document replacement, create a template at:
+
+```text
+templates/
+  django_legal/
+    documents/
+      terms-of-use.html
+```
+
+The app looks for `django_legal/documents/<slug>.html` first, then falls back to `django_legal/current_version.html`.
+Replacement templates receive the same context:
+
+- `document`
+- `version`
+- `version_update_diff`
+- `requires_acceptance`
+- `remaining_legal_document_count`
+
+If `requires_acceptance` is true, include a POST form with CSRF protection and buttons named `legal_action`:
+
+```django
+<form method="post">
+  {% csrf_token %}
+  <button type="submit" name="legal_action" value="accept">I accept these changes</button>
+  <button type="submit" name="legal_action" value="decline">Decline</button>
+</form>
+```
+
+---
+
+## Highlighting document updates
+
+Each `LegalDocumentVersion` can compare itself with the previous published version of the same document.
+This is useful when users must review what changed before accepting a new Terms or Privacy version.
+
+```python
+version = document.versions.order_by("-created_at").first()
+update_diff = version.get_update_diff()
+```
+
+`get_update_diff()` returns a dictionary:
+
+- `current_version`: the version being displayed.
+- `previous_version`: the previous published version, or `None` for the first version.
+- `has_previous`: whether a previous version exists.
+- `has_changes`: whether the generated blocks include added or removed content.
+- `blocks`: ordered diff blocks with `kind`, `label`, `lines`, and `is_changed`.
+
+Block kinds are:
+
+- `added`: lines added in the current version.
+- `removed`: lines present in the previous version but removed from the current version.
+- `unchanged`: current-version lines that did not change.
+
+The built-in `current_version_view` adds `version_update_diff` to the template context.
+The default template renders the diff blocks, and projects can style or replace that display by overriding:
+
+```text
+templates/
+  django_legal/
+    current_version.html
+```
+
+For example:
+
+```django
+{% if version_update_diff.has_previous %}
+  <p>Changes since v{{ version_update_diff.previous_version.version_label }}</p>
+{% endif %}
+
+{% for block in version_update_diff.blocks %}
+  <div class="legal-diff-block legal-diff-block--{{ block.kind }}">
+    {% if block.is_changed %}<strong>{{ block.label }}</strong>{% endif %}
+    {% for line in block.lines %}
+      <p>{{ line }}</p>
+    {% endfor %}
+  </div>
+{% endfor %}
+```
+
+No migration is required for update highlighting because it is calculated from existing immutable version snapshots.
 
 ---
 
@@ -183,6 +280,7 @@ As with the gate template, you can override `current_version.html` under `templa
 
 - Calling `LegalDocument.publish_new_version()` returns `(version, created)`. When the current snapshot matches the latest version, it returns the existing version with `created=False`.
 - Publishing is idempotent and uses a stable hash (slug + version + snapshot) to avoid churn; admin actions already handle this return shape.
+- The next semantic version is chosen by diff size: up to 5% change bumps the patch, up to 15% bumps the minor, otherwise the major.
 
 ---
 
@@ -212,6 +310,32 @@ LegalDocumentAcceptance.objects.record_acceptance(
     user_agent=request.META.get("HTTP_USER_AGENT", ""),
 )
 ```
+
+---
+
+## Demo project (local)
+
+This repo ships with a minimal Django project under `test_project/` and a `manage.py` at the repo root. It is useful for quickly seeing the login + legal flow end-to-end.
+
+```bash
+# from the repository root (the folder containing manage.py)
+python -m venv .venv
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+# macOS/Linux
+source .venv/bin/activate
+pip install -e .
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver
+```
+
+Then:
+
+1. Visit `http://127.0.0.1:8000/admin/` and create one or more `LegalDocument` entries with sections.
+2. Navigate to `http://127.0.0.1:8000/` (protected by login + legal compliance).
+3. Accept the current versions at `http://127.0.0.1:8000/legal/accept/`.
+4. Try `http://127.0.0.1:8000/legal/status/` and `http://127.0.0.1:8000/legal/ok/` for example flows.
 
 ---
 

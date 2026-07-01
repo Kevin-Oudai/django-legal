@@ -151,6 +151,93 @@ class LegalDocumentVersion(models.Model):
     def __str__(self) -> str:
         return f"{self.document.slug} v{self.version_label}"
 
+    def get_previous_version(self):
+        if not self.pk or not self.document_id:
+            return None
+        return (
+            self.document.versions.filter(
+                models.Q(created_at__lt=self.created_at)
+                | models.Q(created_at=self.created_at, id__lt=self.id)
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+
+    def get_change_blocks(self, previous_version=None, include_unchanged=True):
+        previous_version = previous_version or self.get_previous_version()
+        previous_lines = (
+            previous_version.content_snapshot.splitlines()
+            if previous_version is not None
+            else []
+        )
+        current_lines = (self.content_snapshot or "").splitlines()
+
+        if previous_version is None:
+            return [
+                {
+                    "kind": "added",
+                    "label": "Added",
+                    "lines": current_lines,
+                    "is_changed": True,
+                }
+            ]
+
+        blocks = []
+        matcher = difflib.SequenceMatcher(None, previous_lines, current_lines)
+        for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
+            if tag == "equal":
+                lines = current_lines[new_start:new_end]
+                if include_unchanged and lines:
+                    blocks.append(
+                        {
+                            "kind": "unchanged",
+                            "label": "Unchanged",
+                            "lines": lines,
+                            "is_changed": False,
+                        }
+                    )
+                continue
+
+            if tag in {"delete", "replace"}:
+                lines = previous_lines[old_start:old_end]
+                if lines:
+                    blocks.append(
+                        {
+                            "kind": "removed",
+                            "label": "Removed",
+                            "lines": lines,
+                            "is_changed": True,
+                        }
+                    )
+
+            if tag in {"insert", "replace"}:
+                lines = current_lines[new_start:new_end]
+                if lines:
+                    blocks.append(
+                        {
+                            "kind": "added",
+                            "label": "Added",
+                            "lines": lines,
+                            "is_changed": True,
+                        }
+                    )
+
+        return blocks
+
+    def get_update_diff(self, previous_version=None, include_unchanged=True):
+        previous_version = previous_version or self.get_previous_version()
+        blocks = self.get_change_blocks(
+            previous_version=previous_version,
+            include_unchanged=include_unchanged,
+        )
+        return {
+            "current_version": self,
+            "previous_version": previous_version,
+            "has_previous": previous_version is not None,
+            "has_changes": any(block["is_changed"] for block in blocks),
+            "blocks": blocks,
+        }
+
 
 class LegalDocumentAcceptanceManager(models.Manager):
     def record_acceptance(
