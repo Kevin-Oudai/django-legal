@@ -44,10 +44,10 @@ Install from PyPI or from your chosen source:
 pip install mroudai-django-legal
 ```
 
-Install directly from GitHub:
+Install the reviewed 0.1.4 source directly from GitHub (a PyPI release/tag is not implied):
 
 ```bash
-pip install "mroudai-django-legal @ git+https://github.com/Kevin-Oudai/django-legal.git@v0.1.4"
+pip install "mroudai-django-legal @ git+https://github.com/Kevin-Oudai/django-legal.git@4c29d5a1a2c57b8538a0809ebcff5f720ef2d782"
 ```
 
 Ensure all the listed apps are in the INSTALLED_APPS list:

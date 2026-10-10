@@ -131,7 +131,7 @@ def current_version_view(request: HttpRequest, slug: str) -> HttpResponse:
 
         action = (request.POST.get("legal_action") or "").strip()
         if action == "decline":
-            return _home_redirect(request)
+            return redirect("/")
 
         if action != "accept":
             return HttpResponse("Choose accept or decline explicitly.", status=400)

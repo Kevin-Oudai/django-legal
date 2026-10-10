@@ -271,3 +271,9 @@ class AcceptanceSafetyTests(TestCase):
         self.assertEqual(self.doc.versions.first().content_snapshot, self.version.content_snapshot)
         _,created=self.doc.publish_new_version()
         self.assertTrue(created)
+
+
+    def test_decline_does_not_redirect_back_into_a_protected_page(self):
+        response=self.client.post(self.url+"?next=/protected/", {"legal_action":"decline"})
+        self.assertEqual(response["Location"], "/")
+        self.assertFalse(LegalDocumentAcceptance.objects.exists())
