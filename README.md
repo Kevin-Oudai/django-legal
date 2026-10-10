@@ -47,7 +47,7 @@ pip install mroudai-django-legal
 Install directly from GitHub:
 
 ```bash
-pip install "mroudai-django-legal @ git+https://github.com/Kevin-Oudai/django-legal.git@v0.1.3"
+pip install "mroudai-django-legal @ git+https://github.com/Kevin-Oudai/django-legal.git@v0.1.4"
 ```
 
 Ensure all the listed apps are in the INSTALLED_APPS list:
@@ -121,8 +121,8 @@ The app uses your configured `AUTH_USER_MODEL` internally, via `settings.AUTH_US
 2. Create one or more **LegalDocument** entries (e.g. "Terms of Use", "Privacy Policy").
    - Set `is_required=True` for documents that users must accept so they can access and use the site.
 3. Add **sections** for each document using `LegalDocumentSection` to build up the full text in order.
-4. Save the document. If sections exist, the admin will automatically publish an initial `1.0.0` version.
-5. When you update sections later, either save again (auto-publish on changes) or use the admin action
+4. Save the document and sections as a draft; this does not change the published version.
+5. Use the admin action
    **"Publish new legal version from current sections"**. Each publish takes a snapshot of the current sections,
    computes a hash, and assigns an `X.Y.Z` version label.
 
@@ -366,3 +366,35 @@ and then decorate any protected views with `@login_required` and `@legal_require
 ## Project status
 
 This is an early version of **django-legal**. The core behaviour is in place, but the API and templates may still evolve. Feedback and contributions are welcome.
+
+
+## 0.1.4 acceptance and publication safeguards
+
+- Admin saves keep drafts by default. Publish deliberately with the existing
+  action. `LEGAL_AUTO_PUBLISH=True` opts into the earlier automatic behavior.
+- Client address and browser metadata are omitted by default, including direct
+  manager calls. `LEGAL_RECORD_CLIENT_METADATA=True` explicitly opts in; browser
+  metadata is capped at 2,048 characters. Existing metadata is not erased by this
+  upgrade; use a separately reviewed retention process if needed.
+- Acceptance POSTs require `legal_action=accept`, `version_id`, and `version_hash`
+  matching the version reviewed. Missing/unknown actions return 400; an outdated
+  or missing version returns 409 and records nothing. Update custom templates.
+- Publishing and acceptance share a document-row lock, so publication cannot
+  substitute unseen text during acceptance. Repeated acceptance is idempotent.
+- Published versions and acceptances reject ordinary ORM instance/queryset
+  updates, deletes and conflict-updating bulk inserts. Protected relationships
+  prevent cascades through documents, versions or users. This is an application
+  boundary, not protection against privileged direct SQL. Pseudonymize a user
+  rather than deleting retained evidence when your retention policy requires it.
+- Version and acceptance admin pages are read-only. Acceptance search does not
+  assume a username field on a custom user model.
+- Valid same-host `next` destinations survive the multi-document flow. External
+  destinations are rejected at final redirect. Anonymous access is still managed
+  by the host application. Required documents without published versions remain
+  ignored by the generic compliance helper; a host may enforce expected slugs
+  separately to fail closed during incomplete configuration.
+- Bearer APIs must use their authenticated principal with the compliance helper
+  and a JSON refusal; the browser decorator does not authenticate API tokens.
+
+Tests: run `python manage.py check`, `python manage.py makemigrations --check
+--dry-run`, and `python manage.py test django_legal` in a disposable environment.

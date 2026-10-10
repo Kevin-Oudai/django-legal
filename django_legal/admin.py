@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.conf import settings
 
 from .models import LegalDocument, LegalDocumentAcceptance, LegalDocumentSection, LegalDocumentVersion
 
@@ -43,6 +44,8 @@ class LegalDocumentAdmin(admin.ModelAdmin):
           from its content, publish a new version using the diff rules.
         """
         super().save_related(request, form, formsets, change)
+        if not getattr(settings, "LEGAL_AUTO_PUBLISH", False):
+            return
         document = form.instance
 
         if not document.sections.exists():
@@ -83,6 +86,12 @@ class LegalDocumentVersionAdmin(admin.ModelAdmin):
         "published_at",
     )
 
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
     def has_add_permission(self, request):
         # New versions are created via LegalDocument.publish_new_version,
         # not by adding LegalDocumentVersion records manually.
@@ -92,5 +101,14 @@ class LegalDocumentVersionAdmin(admin.ModelAdmin):
 @admin.register(LegalDocumentAcceptance)
 class LegalDocumentAcceptanceAdmin(admin.ModelAdmin):
     list_display = ("user", "version", "accepted_at", "ip_address")
-    search_fields = ("user__username", "ip_address", "user_agent")
+    search_fields = ("version__document__slug",)
     list_filter = ("accepted_at",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

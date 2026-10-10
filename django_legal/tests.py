@@ -167,7 +167,7 @@ class AcceptanceGateTests(TestCase):
 
         response = self.client.post(
             "/legal/terms-of-use/current/",
-            {"legal_action": "accept"},
+            {"legal_action": "accept", "version_id": str(self.version.pk), "version_hash": self.version.version_hash},
         )
 
         self.assertEqual(302, response.status_code)
@@ -180,7 +180,7 @@ class AcceptanceGateTests(TestCase):
 
         response = self.client.post(
             "/legal/privacy-policy/current/",
-            {"legal_action": "accept"},
+            {"legal_action": "accept", "version_id": str(privacy_version.pk), "version_hash": privacy_version.version_hash},
         )
 
         self.assertEqual(302, response.status_code)
@@ -220,3 +220,54 @@ class AcceptanceGateTests(TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertContains(response, "Custom template for Custom Document")
+
+
+class AcceptanceSafetyTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="safe", password="test-password")
+        self.doc = _make_required_document()
+        self.version, _ = self.doc.publish_new_version()
+        self.client.force_login(self.user)
+        self.url = "/legal/terms-of-use/current/"
+
+    def test_missing_or_unknown_action_never_accepts(self):
+        for data in ({}, {"legal_action": "other"}):
+            self.assertEqual(self.client.post(self.url, data).status_code, 400)
+        self.assertFalse(LegalDocumentAcceptance.objects.exists())
+
+    def test_unseen_new_version_is_not_accepted(self):
+        LegalDocumentSection.objects.filter(document=self.doc).update(body="New terms")
+        self.doc.publish_new_version()
+        response = self.client.post(self.url, {"legal_action": "accept", "version_id": str(self.version.pk), "version_hash": self.version.version_hash})
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(LegalDocumentAcceptance.objects.exists())
+
+    def test_metadata_private_by_default_and_records_immutable(self):
+        from django.core.exceptions import ValidationError
+        from django.db.models.deletion import ProtectedError
+        record = LegalDocumentAcceptance.objects.record_acceptance(self.user, self.version, ip_address="203.0.113.1", user_agent="Private browser")
+        self.assertEqual((record.ip_address, record.user_agent), ("", ""))
+        for obj in (record, self.version):
+            with self.assertRaises(ValidationError): obj.save()
+            with self.assertRaises(ValidationError): obj.delete()
+            with self.assertRaises(ValidationError): type(obj).objects.filter(pk=obj.pk).update(pk=obj.pk)
+            with self.assertRaises(ValidationError): type(obj).objects.filter(pk=obj.pk).delete()
+        with self.assertRaises(ProtectedError): self.doc.delete()
+
+    def test_safe_next_preserved_and_external_redirect_rejected(self):
+        data={"legal_action":"accept", "version_id":str(self.version.pk), "version_hash":self.version.version_hash}
+        self.assertEqual(self.client.post(self.url+"?next=/tools/merge-pdf/", data)["Location"], "/tools/merge-pdf/")
+        self.assertEqual(self.client.post(self.url+"?next=https://evil.test", data)["Location"], "/")
+
+    def test_save_sections_keeps_published_snapshot_until_explicit_publish(self):
+        from django_legal.admin import LegalDocumentAdmin
+        from django.contrib.admin import site
+        admin = LegalDocumentAdmin(type(self.doc), site)
+        with patch("django.contrib.admin.ModelAdmin.save_related"):
+            form=type("Form", (), {"instance":self.doc})()
+            LegalDocumentSection.objects.filter(document=self.doc).update(body="A draft")
+            admin.save_related(None, form, [], True)
+        self.assertEqual(self.doc.versions.count(), 1)
+        self.assertEqual(self.doc.versions.first().content_snapshot, self.version.content_snapshot)
+        _,created=self.doc.publish_new_version()
+        self.assertTrue(created)

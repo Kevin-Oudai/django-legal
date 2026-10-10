@@ -1,9 +1,41 @@
 import difflib
 import hashlib
 
+from django.core.exceptions import ValidationError
 from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
+
+
+class ImmutableQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise ValidationError("Published legal records cannot be changed.")
+
+    def delete(self):
+        raise ValidationError("Published legal records cannot be deleted.")
+
+    def bulk_create(self, objs, batch_size=None, ignore_conflicts=False, update_conflicts=False, update_fields=None, unique_fields=None):
+        if update_conflicts:
+            raise ValidationError("Published legal records cannot be changed.")
+        return super().bulk_create(objs, batch_size=batch_size, ignore_conflicts=ignore_conflicts, update_conflicts=False, update_fields=update_fields, unique_fields=unique_fields)
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        raise ValidationError("Published legal records cannot be changed.")
+
+
+class ImmutableRecord(models.Model):
+    objects = ImmutableQuerySet.as_manager()
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding or (self.pk is not None and type(self).objects.filter(pk=self.pk).exists()):
+            raise ValidationError("Published legal records cannot be changed.")
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError("Published legal records cannot be deleted.")
 
 
 class LegalDocument(models.Model):
@@ -83,7 +115,7 @@ class LegalDocument(models.Model):
 
             # Build snapshot from currently saved sections.
             snapshot = locked.build_current_snapshot()
-            last_version = locked.versions.order_by("-created_at").first()
+            last_version = locked.versions.filter(published_at__isnull=False).order_by("-created_at", "-id").first()
 
             # If nothing changed since the last version, avoid creating a
             # duplicate immutable record. This also keeps the version hash
@@ -136,10 +168,10 @@ class LegalDocumentSection(models.Model):
         return f"{self.document.slug} - {self.heading}"
 
 
-class LegalDocumentVersion(models.Model):
+class LegalDocumentVersion(ImmutableRecord):
     document = models.ForeignKey(
         LegalDocument,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="versions",
     )
     version_label = models.CharField(max_length=50)
@@ -239,7 +271,7 @@ class LegalDocumentVersion(models.Model):
         }
 
 
-class LegalDocumentAcceptanceManager(models.Manager):
+class LegalDocumentAcceptanceManager(models.Manager.from_queryset(ImmutableQuerySet)):
     def record_acceptance(
         self,
         user,
@@ -253,22 +285,22 @@ class LegalDocumentAcceptanceManager(models.Manager):
             defaults={
                 "version_hash_snapshot": version.version_hash,
                 "accepted_at": timezone.now(),
-                "ip_address": ip_address or "",
-                "user_agent": user_agent or "",
+                "ip_address": (ip_address or "") if getattr(settings, "LEGAL_RECORD_CLIENT_METADATA", False) else "",
+                "user_agent": (user_agent or "")[:2048] if getattr(settings, "LEGAL_RECORD_CLIENT_METADATA", False) else "",
             },
         )
         return acceptance
 
 
-class LegalDocumentAcceptance(models.Model):
+class LegalDocumentAcceptance(ImmutableRecord):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="legal_document_acceptances",
     )
     version = models.ForeignKey(
         LegalDocumentVersion,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="acceptances",
     )
     version_hash_snapshot = models.CharField(max_length=128)
@@ -295,7 +327,7 @@ def check_user_legal_compliance(user):
     missing_versions: list[LegalDocumentVersion] = []
 
     for document in required_documents:
-        current_version = document.versions.order_by("-created_at").first()
+        current_version = document.versions.filter(published_at__isnull=False).order_by("-created_at", "-id").first()
         if current_version is None:
             continue
 

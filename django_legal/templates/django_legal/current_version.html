@@ -52,6 +52,8 @@
           </p>
           <form method="post">
             {% csrf_token %}
+            <input type="hidden" name="version_id" value="{{ version.pk }}">
+            <input type="hidden" name="version_hash" value="{{ version.version_hash }}">
             <button type="submit" name="legal_action" value="accept">I accept these changes</button>
             <button type="submit" name="legal_action" value="decline">Decline</button>
           </form>

@@ -1,14 +1,22 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
+from django.db import transaction
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_http_methods
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from urllib.parse import urlencode
 
 from .models import LegalDocument, LegalDocumentAcceptance, check_user_legal_compliance
 
 
-def _home_redirect():
-    return redirect("/")
+def _home_redirect(request):
+    target = request.GET.get("next", "/")
+    if not url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        target = "/"
+    return redirect(target)
+
 
 
 def _missing_versions_for_user(user):
@@ -49,6 +57,7 @@ def _current_version_template_names(document):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
 def acceptance_gate(request: HttpRequest) -> HttpResponse:
     """
     Legal acceptance gate.
@@ -73,9 +82,9 @@ def acceptance_gate(request: HttpRequest) -> HttpResponse:
     first_missing_url = _first_missing_version_url(user)
 
     if request.method == "POST" and first_missing_url:
-        return redirect(first_missing_url)
+        return redirect(first_missing_url + ("?" + urlencode({"next": request.GET["next"]}) if "next" in request.GET else ""))
     if not missing_versions:
-        return _home_redirect()
+        return _home_redirect(request)
 
     context = {
         "missing_versions": missing_versions,
@@ -83,6 +92,8 @@ def acceptance_gate(request: HttpRequest) -> HttpResponse:
     return render(request, "django_legal/acceptance_gate.html", context)
 
 
+@require_http_methods(["GET", "POST"])
+@transaction.atomic
 def current_version_view(request: HttpRequest, slug: str) -> HttpResponse:
     """
     Display the current (latest) published version of a LegalDocument.
@@ -105,8 +116,8 @@ def current_version_view(request: HttpRequest, slug: str) -> HttpResponse:
       to the next missing document, or "/" when no required documents remain.
     - POST with legal_action=decline returns to "/".
     """
-    document = get_object_or_404(LegalDocument, slug=slug)
-    current_version = document.versions.order_by("-created_at").first()
+    document = get_object_or_404(LegalDocument.objects.select_for_update() if request.method == "POST" else LegalDocument.objects, slug=slug)
+    current_version = document.versions.filter(published_at__isnull=False).order_by("-created_at", "-id").first()
     missing_versions = _missing_versions_for_user(request.user)
     requires_acceptance = bool(
         current_version
@@ -120,15 +131,19 @@ def current_version_view(request: HttpRequest, slug: str) -> HttpResponse:
 
         action = (request.POST.get("legal_action") or "").strip()
         if action == "decline":
-            return _home_redirect()
+            return _home_redirect(request)
 
-        if current_version is not None and requires_acceptance:
+        if action != "accept":
+            return HttpResponse("Choose accept or decline explicitly.", status=400)
+        if current_version is None or request.POST.get("version_id") != str(current_version.pk) or request.POST.get("version_hash") != current_version.version_hash:
+            return HttpResponse("This document changed. Reload and review the current version before accepting.", status=409)
+        if requires_acceptance:
             _record_acceptance(request, current_version)
 
         next_document_url = _first_missing_version_url(request.user)
         if next_document_url:
-            return redirect(next_document_url)
-        return _home_redirect()
+            return redirect(next_document_url + ("?" + urlencode({"next": request.GET["next"]}) if "next" in request.GET else ""))
+        return _home_redirect(request)
 
     if current_version is None:
         return render(
