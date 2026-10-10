@@ -381,6 +381,9 @@ This is an early version of **django-legal**. The core behaviour is in place, bu
   or missing version returns 409 and records nothing. Update custom templates.
 - Publishing and acceptance share a document-row lock, so publication cannot
   substitute unseen text during acceptance. Repeated acceptance is idempotent.
+- Decision POSTs lock the authenticated user before the document and recheck
+  that the account is active. Host submission/account services should use the
+  same customer-before-document order to avoid foreign-key lock deadlocks.
 - Published versions and acceptances reject ordinary ORM instance/queryset
   updates, deletes and conflict-updating bulk inserts. Protected relationships
   prevent cascades through documents, versions or users. This is an application

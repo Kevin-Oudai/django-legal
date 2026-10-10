@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
@@ -116,6 +117,12 @@ def current_version_view(request: HttpRequest, slug: str) -> HttpResponse:
       to the next missing document, or "/" when no required documents remain.
     - POST with legal_action=decline returns to "/".
     """
+    if request.method == "POST" and request.user.is_authenticated:
+        # Host submission/account services lock the customer before documents.
+        # Use that same order: inserting a decision also takes a user FK lock.
+        request.user = get_user_model().objects.select_for_update().get(pk=request.user.pk)
+        if not request.user.is_active:
+            return HttpResponse("An active account is required.", status=403)
     document = get_object_or_404(LegalDocument.objects.select_for_update() if request.method == "POST" else LegalDocument.objects, slug=slug)
     current_version = document.versions.filter(published_at__isnull=False).order_by("-created_at", "-id").first()
     missing_versions = _missing_versions_for_user(request.user)

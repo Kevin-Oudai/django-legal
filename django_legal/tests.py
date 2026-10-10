@@ -277,3 +277,14 @@ class AcceptanceSafetyTests(TestCase):
         response=self.client.post(self.url+"?next=/protected/", {"legal_action":"decline"})
         self.assertEqual(response["Location"], "/")
         self.assertFalse(LegalDocumentAcceptance.objects.exists())
+
+    def test_account_closed_during_request_cannot_record_a_decision(self):
+        from django_legal.views import current_version_view
+        request = RequestFactory().post(self.url, {
+            "legal_action": "accept", "version_id": str(self.version.pk),
+            "version_hash": self.version.version_hash,
+        })
+        request.user = self.user
+        get_user_model().objects.filter(pk=self.user.pk).update(is_active=False)
+        self.assertEqual(current_version_view(request, self.doc.slug).status_code, 403)
+        self.assertFalse(LegalDocumentAcceptance.objects.exists())
